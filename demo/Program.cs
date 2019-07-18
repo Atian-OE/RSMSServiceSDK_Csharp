@@ -5,12 +5,12 @@ namespace c_shape
 {
     class Program
     {
-        static void Connected() {
-            Console.WriteLine("连接成功");
+        static void Connected(string addr) {
+            Console.WriteLine("连接成功{0}",addr);
         }
-        static void Disconnected()
+        static void Disconnected(string addr)
         {
-            Console.WriteLine("断开连接");
+            Console.WriteLine("断开连接{0}",addr);
         }
         static void ErrorCallBack(Exception ex)
         {
@@ -39,45 +39,49 @@ namespace c_shape
 
         static void Main(string[] args)
         {
-            RSMSServiceDLL.Connected += Connected;
-            RSMSServiceDLL.Disconnected += Disconnected;
-            RSMSServiceDLL.ErrorAction += ErrorCallBack;
-            RSMSServiceDLL.CreateDefenceZoneAction += CreateDefenceZoneAction;
-            RSMSServiceDLL.UpdateDefenceZoneAction += UpdateDefenceZoneAction;
-            RSMSServiceDLL.UpdateDFStateAction += UpdateDFStateAction;
-            RSMSServiceDLL.UpdateDFDeploymentStateAction += UpdateDFDeploymentStateAction;
-            RSMSServiceDLL.DeleteDFAction += DeleteDFAction;
+            RSMSServiceClient clinet = new RSMSServiceClient("127.0.0.1");
+            clinet.Start();
 
-            RSMSServiceDLL.InitSDK("127.0.0.1");
+
+            clinet.ConnectedAction += Connected;
+            clinet.DisconnectedAction += Disconnected;
+            clinet.ErrorAction += ErrorCallBack;
+            clinet.CreateDefenceZoneAction += CreateDefenceZoneAction;
+            clinet.UpdateDefenceZoneAction += UpdateDefenceZoneAction;
+            clinet.UpdateDFStateAction += UpdateDFStateAction;
+            clinet.UpdateDFDeploymentStateAction += UpdateDFDeploymentStateAction;
+            clinet.DeleteDFAction += DeleteDFAction;
+            clinet.Start();
+
 
             GetDefenceZoneReply reply;
-            ErrorDef error= RSMSServiceDLL.GetDefenceZone(0, 10, DateTime.Now.AddDays(-100), DateTime.Now, out reply);
+            ErrorDef error= clinet.GetDefenceZone(0, 10, DateTime.Now.AddDays(-100), DateTime.Now, out reply);
             Console.WriteLine("GetDefenceZone" + error);
 
             GetHistoryReply reply2;
-            error = RSMSServiceDLL.GetHistory(0, 10, DateTime.Now.AddDays(-100), DateTime.Now, out reply2);
+            error = clinet.GetHistory(0, 10, DateTime.Now.AddDays(-100), DateTime.Now, out reply2);
             Console.WriteLine("GetHistory" + error);
 
             DeploymentReply reply3;
-            error = RSMSServiceDLL.Deployment(39, out reply3);
+            error = clinet.Deployment(39, out reply3);
             Console.WriteLine("Deployment" + error);
 
             WithdrawalReply reply4;
-            error = RSMSServiceDLL.Withdrawal(39, out reply4);
+            error = clinet.Withdrawal(39, out reply4);
             Console.WriteLine("Withdrawal" + error);
 
             ResetAlarmReply reply5;
-            error = RSMSServiceDLL.ResetAlarm(out reply5);
+            error = clinet.ResetAlarm(out reply5);
             Console.WriteLine("ResetAlarm" + error);
 
             CloseAlarmSoundReply reply6;
-            error = RSMSServiceDLL.CloseAlarmSound(out reply6);
+            error = clinet.CloseAlarmSound(out reply6);
             Console.WriteLine("CloseAlarmSound" + error);
 
 
            
             Console.ReadKey();
-            RSMSServiceDLL.DestroySDK();
+            clinet.Close();
         }
     }
 }

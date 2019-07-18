@@ -7,74 +7,81 @@ using System.Threading;
 
 namespace RSMSServiceSDK
 {
-    public class RSMSServiceDLL
+    public class RSMSServiceClient
     {
         private struct WaitPack
         {
-            public Action<byte, string> action;
-            public byte msg_id;
+            public Action<MsgID, string> action;
+            public MsgID msg_id;
         }
 
         /// <summary>
         /// 连接的回调
         /// </summary>
-        public static Action Connected;
+        public Action<String> ConnectedAction;
         /// <summary>
         /// 断开的回调
         /// </summary>
-        public static Action Disconnected;
+        public Action<String> DisconnectedAction;
         /// <summary>
         /// 异常回调
         /// </summary>
-        public static Action<Exception> ErrorAction;
+        public Action<Exception> ErrorAction;
         /// <summary>
         /// 创建防区通知
         /// </summary>
-        public static Action<CreateDefenceZoneNotify> CreateDefenceZoneAction;
+        public Action<CreateDefenceZoneNotify> CreateDefenceZoneAction;
         /// <summary>
         /// 更新防区通知
         /// </summary>
-        public static Action<UpdateDefenceZoneNotify> UpdateDefenceZoneAction;
+        public Action<UpdateDefenceZoneNotify> UpdateDefenceZoneAction;
         /// <summary>
         /// 更新防区状态通知
         /// </summary>
-        public static Action<UpdateDFStateNotify> UpdateDFStateAction;
+        public Action<UpdateDFStateNotify> UpdateDFStateAction;
         /// <summary>
         /// 更新防区布防状态通知
         /// </summary>
-        public static Action<UpdateDFDeploymentStateNotify> UpdateDFDeploymentStateAction;
+        public Action<UpdateDFDeploymentStateNotify> UpdateDFDeploymentStateAction;
         /// <summary>
         /// 删除防区通知
         /// </summary>
-        public static Action<DeleteDFNotify> DeleteDFAction;
+        public Action<DeleteDFNotify> DeleteDFAction;
 
-        private static string host = "127.0.0.1";
-        private static bool is_connected = false;
-        private static TcpClient tcp_client;
+        private string host = "127.0.0.1";
+        private bool is_connected = false;
+        private TcpClient tcp_client;
         //自动连接线程
-        private static Thread auto_connect_th = null;
-        private static bool break_auto_connect_th = false;
+        private Thread auto_connect_th = null;
+        private bool break_auto_connect_th = false;
         //心跳线程
-        private static Thread heart_beat_th = null;
-        private static bool break_heart_beat_th = false;
+        private Thread heart_beat_th = null;
+        private bool break_heart_beat_th = false;
         //接受线程
-        private static Thread receive_th = null;
-        private static bool break_receive_th = false;
+        private Thread receive_th = null;
+        private bool break_receive_th = false;
 
         //接受数据的缓存
-        private static ByteBuffer recv_buf = ByteBuffer.Allocate(1024);
+        private ByteBuffer recv_buf = ByteBuffer.Allocate(1024);
         //等待这个包的回传
-        private static LinkedList<WaitPack> wait_pack = new LinkedList<WaitPack>();
-        private static object wait_pack_look = new object();
+        private LinkedList<WaitPack> wait_pack = new LinkedList<WaitPack>();
+        private object wait_pack_look = new object();
 
         /// <summary>
-        /// 初始化SDK
+        /// 初始化连接
         /// </summary>
         /// <param name="_host">远端设备ip地址</param>
-        public static void InitSDK(string _host)
+        public RSMSServiceClient(string _host)
         {
             host = _host;
-            DestroySDK();
+        }
+
+        /// <summary>
+        /// 开始
+        /// </summary>
+        public void Start() {
+
+            Close();
 
             auto_connect_th = new Thread(auto_connect);
             auto_connect_th.Start();
@@ -89,7 +96,7 @@ namespace RSMSServiceSDK
         /// <summary>
         /// 销毁SDK
         /// </summary>
-        public static void DestroySDK()
+        public void Close()
         {
             lock (wait_pack_look)
             {
@@ -121,18 +128,18 @@ namespace RSMSServiceSDK
         }
 
         //断开连接
-        private static void disconnect()
+        private void disconnect()
         {
             if (is_connected)
             {
                 tcp_client.Close();
                 is_connected = false;
-                Disconnected.Invoke();
+                receive_handle(MsgID.DisconnectID, null);
             }
         }
 
         //写入数据到socket
-        private static ErrorDef write(byte[] data)
+        private ErrorDef write(byte[] data)
         {
             if (is_connected)
             {
@@ -158,7 +165,7 @@ namespace RSMSServiceSDK
         }
 
         //自动连接
-        private static void auto_connect(object o)
+        private void auto_connect(object o)
         {
             break_auto_connect_th = false;
             int reconnect_time_full = 10;
@@ -177,7 +184,7 @@ namespace RSMSServiceSDK
                             tcp_client.ReceiveTimeout = 0;
                             tcp_client.Connect(host, 17082);
                             is_connected = tcp_client.Connected;
-                            Connected.Invoke();
+                            receive_handle(MsgID.ConnectID, null);
                         }
                         catch (Exception ex)
                         {
@@ -198,7 +205,7 @@ namespace RSMSServiceSDK
         }
 
         //心跳
-        private static void heart_beat(object o)
+        private void heart_beat(object o)
         {
             break_heart_beat_th = false;
             int heart_beat_time_full = 5;
@@ -223,7 +230,7 @@ namespace RSMSServiceSDK
         }
 
         //接受
-        private static void receive(object o)
+        private void receive(object o)
         {
             break_receive_th = false;
             recv_buf.Clear();
@@ -239,6 +246,7 @@ namespace RSMSServiceSDK
                 {
                     int n = tcp_client.GetStream().Read(buf, 0, buf.Length);
                     recv_buf.WriteBytes(buf, n);
+handle_buf:
                     if (recv_buf.ReadableBytes() < 5)
                     {
                         continue;
@@ -254,7 +262,10 @@ namespace RSMSServiceSDK
                     }
                     byte[] bytes = new byte[pkg_size];
                     recv_buf.ReadBytes(bytes, 0, pkg_size);
-                    receive_handle(cmd, bytes);
+                    receive_handle((MsgID)cmd, bytes);
+
+                    recv_buf.DiscardReadBytes();
+                    goto handle_buf;
                 }
                 catch (Exception ex)
                 {
@@ -270,7 +281,7 @@ namespace RSMSServiceSDK
 
 
         //接受处理
-        private static void receive_handle(byte cmd_id, byte[] data)
+        private void receive_handle(MsgID cmd_id, byte[] data)
         {
             string content = Encoding.UTF8.GetString(data);
             lock (wait_pack_look)
@@ -285,8 +296,30 @@ namespace RSMSServiceSDK
                 }
             }
 
-            switch ((MsgID)cmd_id)
+            switch (cmd_id)
             {
+                case MsgID.ConnectID:
+                    {
+                        if (ConnectedAction != null)
+                        {
+                            ConnectedAction.Invoke(host);
+                        }
+                    }
+                    break;
+                case MsgID.DisconnectID:
+                    {
+                        lock (wait_pack_look)
+                        {
+                            wait_pack.Clear();
+                        }
+                        recv_buf.Clear();
+                        if (DisconnectedAction != null)
+                        {
+                            DisconnectedAction.Invoke(host);
+                        }
+
+                    }
+                    break;
                 case MsgID.CreateDefenceZoneNotifyID:
                     {
                         CreateDefenceZoneNotify notify = JsonConvert.DeserializeObject<CreateDefenceZoneNotify>(content);
@@ -365,7 +398,7 @@ namespace RSMSServiceSDK
         /// <param name="wait_id">等待这个包回传</param>
         /// <param name="reply">回传</param>
         /// <returns></returns>
-        private static ErrorDef req_wait_reply<T1, T2>(T1 req, MsgID wait_id, out T2 reply)
+        private ErrorDef req_wait_reply<T1, T2>(T1 req, MsgID wait_id, out T2 reply)
         {
             reply = default(T2);
             ErrorDef result_err = ErrorDef.Ok;
@@ -380,7 +413,7 @@ namespace RSMSServiceSDK
             int timeout = 3000;
             result_err = ErrorDef.TimeoutErr;
             T2 _reply = default(T2);
-            Action<byte, string> action = (msg_id, content) =>
+            Action<MsgID, string> action = (msg_id, content) =>
             {
                 _reply = JsonConvert.DeserializeObject<T2>(content);
                 timeout = 0;
@@ -389,7 +422,7 @@ namespace RSMSServiceSDK
 
             WaitPack pack = new WaitPack();
             pack.action = action;
-            pack.msg_id = (byte)wait_id;
+            pack.msg_id = wait_id;
 
             lock (wait_pack_look)
             {
@@ -420,7 +453,7 @@ namespace RSMSServiceSDK
         /// 设置远端设备ip地址
         /// </summary>
         /// <param name="_host"></param>
-        public static void SetHost(string _host)
+        public void SetHost(string _host)
         {
             host = _host;
             if (is_connected)
@@ -438,7 +471,7 @@ namespace RSMSServiceSDK
         /// <param name="start_time">创建时间起始</param>
         /// <param name="finish_time">创建时间终止</param>
         /// <param name="reply">返回查询结果</param>
-        public static ErrorDef GetDefenceZone(int offset, int limit, DateTime start_time, DateTime finish_time, out GetDefenceZoneReply reply)
+        public ErrorDef GetDefenceZone(int offset, int limit, DateTime start_time, DateTime finish_time, out GetDefenceZoneReply reply)
         {
             GetDefenceZoneRequest req = new GetDefenceZoneRequest();
             if (start_time != null)
@@ -464,7 +497,7 @@ namespace RSMSServiceSDK
         /// <param name="start_time">创建时间起始</param>
         /// <param name="finish_time">创建时间终止</param>
         /// <param name="reply">返回查询结果</param>
-        public static ErrorDef GetHistory(int offset, int limit, DateTime start_time, DateTime finish_time, out GetHistoryReply reply)
+        public ErrorDef GetHistory(int offset, int limit, DateTime start_time, DateTime finish_time, out GetHistoryReply reply)
         {
             GetHistoryRequest req = new GetHistoryRequest();
             if (start_time != null)
@@ -487,7 +520,7 @@ namespace RSMSServiceSDK
         /// </summary>
         /// <param name="zid">防区id</param>
         /// <param name="reply">返回查询结果</param>
-        public static ErrorDef Deployment(int zid, out DeploymentReply reply)
+        public ErrorDef Deployment(int zid, out DeploymentReply reply)
         {
             DeploymentRequest req = new DeploymentRequest();
             req.ID = zid;
@@ -501,7 +534,7 @@ namespace RSMSServiceSDK
         /// </summary>
         /// <param name="zid">防区id</param>
         /// <param name="reply">返回查询结果</param>
-        public static ErrorDef Withdrawal(int zid, out WithdrawalReply reply)
+        public ErrorDef Withdrawal(int zid, out WithdrawalReply reply)
         {
             WithdrawalRequest req = new WithdrawalRequest();
             req.ID = zid;
@@ -516,7 +549,7 @@ namespace RSMSServiceSDK
         /// 重置警报
         /// </summary>
         /// <param name="reply">返回查询结果</param>
-        public static ErrorDef ResetAlarm(out ResetAlarmReply reply)
+        public ErrorDef ResetAlarm(out ResetAlarmReply reply)
         {
             ResetAlarmRequest req = new ResetAlarmRequest();
 
@@ -530,7 +563,7 @@ namespace RSMSServiceSDK
         /// 消音
         /// </summary>
         /// <param name="reply">返回查询结果</param>
-        public static ErrorDef CloseAlarmSound(out CloseAlarmSoundReply reply)
+        public ErrorDef CloseAlarmSound(out CloseAlarmSoundReply reply)
         {
             CloseAlarmSoundRequest req = new CloseAlarmSoundRequest();
 
