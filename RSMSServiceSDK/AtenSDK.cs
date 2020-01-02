@@ -283,7 +283,11 @@ handle_buf:
         //接受处理
         private void receive_handle(MsgID cmd_id, byte[] data)
         {
-            string content = Encoding.UTF8.GetString(data);
+            string content = "";
+            if (data != null)
+            {
+                content = Encoding.UTF8.GetString(data);
+            }
             lock (wait_pack_look)
             {
                 foreach (var item in wait_pack)

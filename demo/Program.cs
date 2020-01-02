@@ -39,8 +39,8 @@ namespace c_shape
 
         static void Main(string[] args)
         {
-            RSMSServiceClient clinet = new RSMSServiceClient("127.0.0.1");
-            clinet.Start();
+            RSMSServiceClient clinet = new RSMSServiceClient("192.168.0.200");
+           
 
 
             clinet.ConnectedAction += Connected;
