@@ -22,7 +22,7 @@ namespace c_shape
         }
         static void UpdateDefenceZoneAction(UpdateDefenceZoneNotify notify)
         {
-            Console.WriteLine("UpdateDefenceZoneNotify:" + notify.Zone.ID);
+            Console.WriteLine("UpdateDefenceZoneNotify:" + notify.Zone.ID + notify.Zone.AlarmState);
         }
         static void UpdateDFStateAction(UpdateDFStateNotify notify)
         {
@@ -39,7 +39,7 @@ namespace c_shape
 
         static void Main(string[] args)
         {
-            RSMSServiceClient clinet = new RSMSServiceClient("192.168.0.200");
+            RSMSServiceClient clinet = new RSMSServiceClient("127.0.0.1");
            
 
 
